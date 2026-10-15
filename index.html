@@ -36,6 +36,7 @@ a { color: var(--accent); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
 .sliders { display: grid; grid-template-columns: max-content minmax(0, 1fr) 7.5em; gap: 6px 12px; align-items: center; }
 .sliders label { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; text-align: right; }
+.sliders label .unit { color: var(--muted); }
 .sliders .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem;
   font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); width: 100%;
   border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
@@ -49,7 +50,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
 .toggle input { width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
 .hint { font-size: 0.8rem; color: var(--muted); }
 .plot { height: 470px; width: 100%; margin-top: 12px; }
-#plot-k, #plot-t { height: 400px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 16px; }
+#plot-k { height: 420px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 16px; }
 #loading { padding: 30px; text-align: center; color: var(--muted); }
 details { margin-top: 30px; }
 summary { cursor: pointer; font-weight: 600; font-size: 1.05rem; }
@@ -77,7 +78,6 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
     <div id="plots" hidden>
       <div id="plot" class="plot"></div>
       <div id="plot-k" class="plot"></div>
-      <div id="plot-t" class="plot"></div>
     </div>
   </div>
 
@@ -117,10 +117,9 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
 
     <h3>Measured signal</h3>
     <p>The out-of-focus column adds a constant background, so $I_{Fluo} = (I + H)/(1 + H)$, divided by its maximum in each sweep.
-    The first plot shows it at the end of each 2&nbsp;s step. The second shows Re K and the trap depth
-    $U_{DEP} = \pm\max|U|$ in $k_BT$ (+ for pDEP, − for nDEP, on a symmetric log axis). The third shows the number of particles
-    in the focus-weighted ROI over the two staircases, $N = I\,c_\infty V_{ROI}$, with $V_{ROI} \approx 25\,\mu\mathrm m^3$
-    ($N \approx 2.5$ with no trap).</p>
+    The first plot shows it at the end of each 2&nbsp;s step. The second shows Re K and the normalised trap depth
+    $U_N = U_{DEP}/\max_f|U_{DEP}|$, with $U_{DEP} = \pm\max_{\mathbf r}|U|$ (+ for pDEP, − for nDEP); the maximum in $k_BT$
+    is given in its title.</p>
     </article>
   </details>
 </main>
@@ -131,15 +130,15 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
   const T = window.Fig2Toy;
   // as in the notebook: FloatLogSlider(min, max in log10) or FloatSlider
   const SLIDERS = [
-    ["sigma_m", "log", 0, 3, 0.02],
-    ["sigma_p", "log", 0, 4, 0.02],
-    ["eps_m", "lin", 1, 120, 0.5],
-    ["eps_p", "log", 0, 2, 0.01],
-    ["radius", "lin", 25, 500, 5],
-    ["b_eff", "lin", 25, 1000, 5],
-    ["Lambda", "log", -3.5, 0, 0.02],
-    ["V0_", "log", -1, 0.7, 0.02],
-    ["h_ch", "log", -0.5, 2.5, 0.02],
+    ["sigma_m", "log", 0, 3, 0.02, "µS/cm"],
+    ["sigma_p", "log", 0, 4, 0.02, "µS/cm"],
+    ["eps_m", "lin", 1, 120, 0.5, "–"],          // relative permittivities
+    ["eps_p", "log", 0, 2, 0.01, "–"],
+    ["radius", "lin", 25, 500, 5, "nm"],
+    ["b_eff", "lin", 25, 1000, 5, "nm"],
+    ["Lambda", "log", -3.5, 0, 0.02, "–"],
+    ["V0_", "log", -1, 0.7, 0.02, "V"],
+    ["h_ch", "log", -0.5, 2.5, 0.02, "µm"],
   ];
   const KEY = { V0_: "V0" };              // slider name -> model parameter
   const $ = id => document.getElementById(id);
@@ -149,8 +148,9 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
   const show = v => { const a = Math.abs(v); return a >= 1e4 || (a < 1e-2 && a > 0) ? v.toExponential(2) : v.toPrecision(4).replace(/\.?0+$/, ""); };
 
   const root = $("sliders");
-  function addRow(name, kind, lo, hi, step, value, onInput) {
-    const lab = document.createElement("label"); lab.htmlFor = "s-" + name; lab.textContent = name;
+  function addRow(name, unit, kind, lo, hi, step, value, onInput) {
+    const lab = document.createElement("label"); lab.htmlFor = "s-" + name;
+    lab.innerHTML = `${name} <span class="unit">(${unit})</span>`;
     const el = document.createElement("input");
     Object.assign(el, { type: "range", id: "s-" + name, min: lo, max: hi, step });
     el.value = kind === "log" ? Math.log10(value) : value;
@@ -175,8 +175,8 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
     root.append(lab, el, v);
     return [lab, el, v];
   }
-  for (const [name, kind, lo, hi, step] of SLIDERS)
-    addRow(name, kind, lo, hi, step, state[KEY[name] || name], x => { state[KEY[name] || name] = x; draw(); });
+  for (const [name, kind, lo, hi, step, unit] of SLIDERS)
+    addRow(name, unit, kind, lo, hi, step, state[KEY[name] || name], x => { state[KEY[name] || name] = x; draw(); });
 
   const sep = document.createElement("div"); sep.className = "sep"; root.append(sep);
   const tl = document.createElement("span");
@@ -184,7 +184,7 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
   tg.innerHTML = '<input type="checkbox" id="aceo"> ACEO on';
   const hint = document.createElement("span"); hint.className = "hint";
   root.append(tl, tg, hint);
-  const rowA = addRow("A", "log", -3, 1, 0.02, A_on, x => { A_on = x; if ($("aceo").checked) state.A = x; draw(); });
+  const rowA = addRow("A", "–", "log", -3, 1, 0.02, A_on, x => { A_on = x; if ($("aceo").checked) state.A = x; draw(); });
   $("aceo").addEventListener("change", () => { state.A = $("aceo").checked ? A_on : 0; draw(); });
 
   function draw() {
@@ -211,33 +211,20 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
       legend: { orientation: "h", x: 0.5, xanchor: "center", y: -0.16, yanchor: "top", font: { color: ink, size: 11 } },
     }, CFG);
 
-    // Re K and the DEP trap depth, signed: + for pDEP (attractive), - for nDEP; symmetric log axis
-    const slog = v => Math.sign(v) * Math.log10(1 + Math.abs(v));
+    // Re K and the normalised DEP trap depth U_N = U / max_f |U|, U = ±max_r|U| (+ pDEP, - nDEP); linear axis
     const U = m.pre.Umax.map((u, i) => u * Math.sign(m.pre.ReK[i]));
-    const ticks = [-1000, -100, -10, 0, 10, 100, 1000];
+    const Umax = Math.max(...U.map(Math.abs)) || 1;
     const dep = css("--depth");
+    const L = layout(`Re K and U_N = U_DEP / max|U_DEP| (max|U_DEP| = ${Umax.toPrecision(3)} kT) · crossover ${fmtF(m.f_x)}`,
+                     "f (kHz)", "Re K, U_N", true);
+    L.yaxis.range = [-1.05, 1.05];
     Plotly.react("plot-k", [
       { x: fk, y: m.pre.ReK, name: "Re K", mode: "lines", line: { color: ink, width: 2 },
         hovertemplate: "%{x:.4g} kHz<br>Re K = %{y:.3f}<extra></extra>" },
-      { x: fk, y: U.map(slog), name: "U_DEP (kT), right axis", mode: "lines+markers", yaxis: "y2",
-        line: { color: dep, width: 1.6 }, marker: { size: 4 }, customdata: U,
-        hovertemplate: "%{x:.4g} kHz<br>U_DEP = %{customdata:.3g} kT<extra></extra>" },
-    ], Object.assign(layout(`Re K and trap depth U_DEP · crossover ${fmtF(m.f_x)}`, "f (kHz)", "Re K", true), {
-      yaxis2: { overlaying: "y", side: "right", color: dep, showgrid: false, zeroline: false, ticks: "outside",
-                title: { text: "U_DEP = ±max|U| (kT), + pDEP", font: { color: dep } },
-                tickvals: ticks.map(slog), ticktext: ticks.map(String) },
-      margin: { l: 60, r: 64, t: 44, b: 80 },
-    }), CFG);
-
-    // trapped particles over time: N = I c_inf V_ROI (focus-weighted ROI), both staircases of 30 x 2 s
-    const N = r => r.I.map(I => I * m.N_per_I);
-    const hov = r => r.fAt.map(f => f / 1e3);
-    Plotly.react("plot-t", [
-      { x: m.up.t, y: N(m.up), name: "up sweep", mode: "lines", line: { color: up, width: 1.6 }, customdata: hov(m.up),
-        hovertemplate: "t = %{x:.1f} s, f = %{customdata:.4g} kHz<br>N = %{y:.3g}<extra>up</extra>" },
-      { x: m.down.t, y: N(m.down), name: "down sweep", mode: "lines", line: { color: down, width: 1.6 }, customdata: hov(m.down),
-        hovertemplate: "t = %{x:.1f} s, f = %{customdata:.4g} kHz<br>N = %{y:.3g}<extra>down</extra>" },
-    ], layout("Trapped particles over time (ROI, N = I · c∞ · V_ROI)", "t (s)", "N (particles)", false), CFG);
+      { x: fk, y: U.map(u => u / Umax), name: "U_N (+ pDEP, − nDEP)", mode: "lines+markers",
+        line: { color: dep, width: 2 }, marker: { size: 4 }, customdata: U,
+        hovertemplate: "%{x:.4g} kHz<br>U_N = %{y:.3f}<br>U_DEP = %{customdata:.3g} kT<extra></extra>" },
+    ], L, CFG);
   }
 
   const CFG = { responsive: true, displayModeBar: false };

@@ -121,8 +121,7 @@
     const phi_max = 0.64 * Math.pow(b / be, 3);
     const pre = precompute(field, freqs, ReK, Omega, q.V0, b, phi_max, q.eps_m);
     const gain = freqs.map(f => 1 + q.A * Math.pow(F_REF / f, 2));
-    const out = { pre, H, gain, f_x: crossover(sm, sp, q.eps_p, q.eps_m), f_c: sm / (2 * Math.PI * q.eps_m * EPS0), lam, params: q,
-                  N_per_I: C_INF * 1e-12 * pre.V_roi };   // particles in the (focus-weighted) ROI per unit I
+    const out = { pre, H, gain, f_x: crossover(sm, sp, q.eps_p, q.eps_m), f_c: sm / (2 * Math.PI * q.eps_m * EPS0), lam, params: q };
     for (const d of ["up", "down"]) {
       const s = sweep(pre, d, gain);
       const S = s.I.map(I => (I + H) / (1 + H)), Smax = Math.max(...S);
