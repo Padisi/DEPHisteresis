@@ -4,10 +4,10 @@ Interactive playground of the DEP trap toy model for Fig. 2 of the draft (200 nm
 
 **Playground:** https://padisi.github.io/DEPHisteresis/
 
-It is a browser port of `chang_cooper/toy/fig2_ps_playground.ipynb`: the same seven sliders (σ_m, σ_p, radius,
-b_eff, Λ, V0, chamber height), the same plots, and the comparison with the draft's up and down sweeps. It adds an
-ACEO switch, the supply gain 1 + A (1 MHz / f)² of the weak-flow scenario in `toy/fig2_ps.py`. With ACEO off
-(A = 0) the result is exactly the notebook's. The page also gives the hysteresis measures and explains the model.
+It is the Sliders section of `chang_cooper/toy/fig2_ps_playground.ipynb` in the browser: the same seven sliders
+(sigma_m, sigma_p, radius, b_eff, Lambda, V0_, h_ch) and one plot, I_Fluo (norm.) of the up and down sweeps against
+the draft. It adds an ACEO switch, the supply gain 1 + A (1 MHz / f)² of the weak-flow scenario in `toy/fig2_ps.py`.
+With ACEO off (A = 0) the result is exactly the notebook's.
 
 ## Files
 
