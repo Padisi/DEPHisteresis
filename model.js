@@ -3,15 +3,16 @@
 // Works in the browser (window.Fig2Toy) and in node (module.exports).
 (function (root) {
   "use strict";
-  const EPS0 = 8.8541878128e-12, EPS_WATER = 78.5 * EPS0;
+  const EPS0 = 8.8541878128e-12;
   const KT = 4.114e-21, ETA = 1.0e-3;
   const KCL_S_PER_M_PER_MM = 149.9e-4;
-  const EPS_P = 2.55, C_INF = 1e11, T_STEP = 2.0, F_REF = 1e6;
+  const C_INF = 1e11, T_STEP = 2.0, F_REF = 1e6;
+  const EPS_TABLE = 78.5;   // relative permittivity of the medium in the 3D field table
   // toy internals, calibrated on the 3D Fokker-Planck runs (no flow)
   const TOY = { J0: 42.9, beta: 0.602, gamma: 0.238, a_eff: 10.0, ell: 0.8 };
   // defaults = fit to Fig. 2 (saturation scenario); A = ACEO supply gain amplitude (0 = no ACEO)
   const DEFAULTS = { sigma_m: 20.0, sigma_p: 188.0, radius: 100.0, b_eff: 297.0, Lambda: 0.0036, V0: 1.0, h_ch: 9.8,
-                     A: 0.0 };
+                     A: 0.0, eps_p: 2.55, eps_m: 78.5 };
   const A_FIT = 0.1911;   // weak-flow scenario of toy/fig2_ps.py (with its own Lambda, V0, H)
 
   // draft Fig. 2, read by eye (red = up sweep): 30 frequencies 100 kHz - 10 MHz, normalised to max = 1
@@ -21,18 +22,18 @@
   const DOWN_DATA = [0.29, 0.39, 0.49, 0.64, 0.75, 0.87, 0.93, 0.97, 0.98, 0.95, 0.91, 0.82, 0.75, 0.67, 0.60,
                      0.54, 0.50, 0.44, 0.40, 0.35, 0.24, 0.18, 0.15, 0.10, 0.12, 0.15, 0.13, 0.15, 0.14, 0.12];
 
-  // Re K of a homogeneous sphere (eps_p, sigma_p) in water (sigma_m), SI units
-  function reK(f, sp, sm) {
+  // Re K of a homogeneous sphere (eps_p, sigma_p) in a medium (eps_m, sigma_m); eps relative, sigma in S/m
+  function reK(f, sp, sm, ep = 2.55, em = EPS_TABLE) {
     const w = 2 * Math.PI * f;
-    const pr = EPS_P * EPS0, pi = -sp / w, mr = EPS_WATER, mi = -sm / w;
+    const pr = ep * EPS0, pi = -sp / w, mr = em * EPS0, mi = -sm / w;
     const nr = pr - mr, ni = pi - mi, dr = pr + 2 * mr, di = pi + 2 * mi;
     return (nr * dr + ni * di) / (dr * dr + di * di);
   }
 
-  function crossover(sm, sp) {
+  function crossover(sm, sp, ep, em) {
     let prev = null;
     for (let i = 0; i < 2000; i++) {
-      const f = Math.pow(10, 3 + 6 * i / 1999), k = reK(f, sp, sm);
+      const f = Math.pow(10, 3 + 6 * i / 1999), k = reK(f, sp, sm, ep, em);
       if (prev !== null && Math.sign(k) !== Math.sign(prev.k)) return prev.f;
       prev = { f, k };
     }
@@ -56,11 +57,12 @@
     return [i - 1, i, (x - L[i - 1]) / (L[i] - L[i - 1])];
   }
 
-  function precompute(field, freqs, ReK, Omega, V0, b_nm, phi_max) {
+  // eps_m: relative permittivity of the medium; U scales with it (alpha = 4 pi eps_m b^3 Re K), the table is at 78.5
+  function precompute(field, freqs, ReK, Omega, V0, b_nm, phi_max, eps_m = EPS_TABLE) {
     const Vg = field.Vg, stride = field.nRoi + field.nEnv;
     const P_max = phi_max * Vg / (4 / 3 * Math.PI * Math.pow(b_nm * 1e-3, 3));
     const P_res = C_INF * 1e-12 * Vg;
-    const scale = V0 * V0 * Math.pow(b_nm / 55.0, 3);
+    const scale = V0 * V0 * Math.pow(b_nm / 55.0, 3) * eps_m / EPS_TABLE;
     const Umax = [], Ieq = [];
     for (let j = 0; j < freqs.length; j++) {
       const [i0, i1, t] = interpIndex(field, Omega[j]);
@@ -112,13 +114,15 @@
     const b = q.radius, be = Math.max(q.b_eff, q.radius);
     const H = q.h_ch / field.dFocus;
     const freqs = F_DATA;
-    const ReK = freqs.map(f => reK(f, sp, sm));
-    const lam = 0.304e-9 / Math.sqrt(sm / KCL_S_PER_M_PER_MM * 1e-3);
-    const Omega = freqs.map(f => 2 * Math.PI * f * q.Lambda * EPS_WATER * 1e-6 / (sm * lam));
+    const ReK = freqs.map(f => reK(f, sp, sm, q.eps_p, q.eps_m));
+    // Debye length of the KCl-equivalent medium: 0.304 nm / sqrt(c [M]) in water, proportional to sqrt(eps_m)
+    const lam = 0.304e-9 / Math.sqrt(sm / KCL_S_PER_M_PER_MM * 1e-3) * Math.sqrt(q.eps_m / EPS_TABLE);
+    const Omega = freqs.map(f => 2 * Math.PI * f * q.Lambda * q.eps_m * EPS0 * 1e-6 / (sm * lam));
     const phi_max = 0.64 * Math.pow(b / be, 3);
-    const pre = precompute(field, freqs, ReK, Omega, q.V0, b, phi_max);
+    const pre = precompute(field, freqs, ReK, Omega, q.V0, b, phi_max, q.eps_m);
     const gain = freqs.map(f => 1 + q.A * Math.pow(F_REF / f, 2));
-    const out = { pre, H, gain, f_x: crossover(sm, sp), f_c: sm / (2 * Math.PI * EPS_WATER), lam, params: q };
+    const out = { pre, H, gain, f_x: crossover(sm, sp, q.eps_p, q.eps_m), f_c: sm / (2 * Math.PI * q.eps_m * EPS0), lam, params: q,
+                  N_per_I: C_INF * 1e-12 * pre.V_roi };   // particles in the (focus-weighted) ROI per unit I
     for (const d of ["up", "down"]) {
       const s = sweep(pre, d, gain);
       const S = s.I.map(I => (I + H) / (1 + H)), Smax = Math.max(...S);
