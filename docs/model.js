@@ -1,139 +1,154 @@
-// Toy model of the DEP trap: diffusion + depth + capacity.
-// JavaScript port of toy/trap_toy.py (same equations, same defaults). Works in the browser and in node.
+// DEP trap toy model, Fig. 2 (200 nm PS) playground: JavaScript port of chang_cooper/toy/fig2_ps_playground.ipynb
+// (run / crossover) and toy/toy_trap.py (precompute / sweep), plus the optional ACEO supply gain of toy/fig2_ps.py.
+// Works in the browser (window.Fig2Toy) and in node (module.exports).
 (function (root) {
   "use strict";
-  const EPS0 = 8.8541878128e-12, KT = 4.114e-21, ETA = 1.0e-3;   // F/m, J, Pa s
-  const EPS_M = 78.5 * EPS0;
-  const KCL_MOLAR_COND = 149.9e-4;                                 // S m^2/mol
-  const SIGMA_AU = 4.1e7, EPS_SIO2 = 3.9 * EPS0;
-  const ELL = 1e-6;                                                // m, length in Omega
+  const EPS0 = 8.8541878128e-12, EPS_WATER = 78.5 * EPS0;
+  const KT = 4.114e-21, ETA = 1.0e-3;
+  const KCL_S_PER_M_PER_MM = 149.9e-4;
+  const EPS_P = 2.55, C_INF = 1e11, T_STEP = 2.0, F_REF = 1e6;
+  // toy internals, calibrated on the 3D Fokker-Planck runs (no flow)
+  const TOY = { J0: 42.9, beta: 0.602, gamma: 0.238, a_eff: 10.0, ell: 0.8 };
+  // defaults = fit to Fig. 2 (saturation scenario); A = ACEO supply gain amplitude (0 = no ACEO)
+  const DEFAULTS = { sigma_m: 20.0, sigma_p: 188.0, radius: 100.0, b_eff: 297.0, Lambda: 0.0036, V0: 1.0, h_ch: 9.8,
+                     A: 0.0 };
+  const A_FIT = 0.1911;   // weak-flow scenario of toy/fig2_ps.py (with its own Lambda, V0, H)
 
-  const DEFAULTS = {
-    model: "au_sio2", a_core: 35.0, t_shell: 20.0, K_s: 1.30, sigma_m: 118.0, debye_nm: 9.6, Lambda: 0.3,
-    V0: 1.0, gap: 0.6, a_trap: 10.0, l_trap: 1.0, V_trap: 25.0, phi_max: 0.64, c_inf: 1e11, t_step: 2.0,
-    f_min: 1e5, f_max: 1e7, n_f: 30, radius: 100.0, eps_p: 2.55, sigma_p: 188.0,
-  };
-  const PRESETS = {
-    "Au@SiO2, 0.1 mM CTAC": { model: "au_sio2", sigma_m: 45.0, debye_nm: 30.4, K_s: 0.22 },
-    "Au@SiO2, 1 mM CTAC": { model: "au_sio2" },
-    "Au@SiO2, 10 mM CTAC": { model: "au_sio2", sigma_m: 427.0, debye_nm: 4.6, K_s: 3.15 },
-    "200 nm PS (Fig. 2)": { model: "homogeneous", radius: 100.0, eps_p: 2.55, sigma_p: 188.0, sigma_m: 20.0,
-                            debye_nm: null, Lambda: 0.0036, c_inf: 5e10 },
-  };
+  // draft Fig. 2, read by eye (red = up sweep): 30 frequencies 100 kHz - 10 MHz, normalised to max = 1
+  const F_DATA = Array.from({ length: 30 }, (_, i) => Math.pow(10, 5 + 2 * i / 29));
+  const UP_DATA = [0.13, 0.23, 0.26, 0.29, 0.36, 0.44, 0.51, 0.57, 0.66, 0.74, 0.80, 0.85, 0.89, 0.91, 0.93,
+                   0.94, 0.94, 0.95, 0.95, 0.96, 0.97, 0.99, 0.86, 0.55, 0.36, 0.30, 0.24, 0.22, 0.21, 0.20];
+  const DOWN_DATA = [0.29, 0.39, 0.49, 0.64, 0.75, 0.87, 0.93, 0.97, 0.98, 0.95, 0.91, 0.82, 0.75, 0.67, 0.60,
+                     0.54, 0.50, 0.44, 0.40, 0.35, 0.24, 0.18, 0.15, 0.10, 0.12, 0.15, 0.13, 0.15, 0.14, 0.12];
 
-  // complex numbers as [re, im]
-  const cadd = (a, b) => [a[0] + b[0], a[1] + b[1]];
-  const csub = (a, b) => [a[0] - b[0], a[1] - b[1]];
-  const cmul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-  const cscale = (a, s) => [a[0] * s, a[1] * s];
-  const cdiv = (a, b) => {
-    const d = b[0] * b[0] + b[1] * b[1];
-    return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d];
-  };
-
-  function logspace(lo, hi, n) {
-    const out = new Array(n);
-    for (let i = 0; i < n; i++) out[i] = Math.pow(10, n === 1 ? lo : lo + (hi - lo) * i / (n - 1));
-    return out;
+  // Re K of a homogeneous sphere (eps_p, sigma_p) in water (sigma_m), SI units
+  function reK(f, sp, sm) {
+    const w = 2 * Math.PI * f;
+    const pr = EPS_P * EPS0, pi = -sp / w, mr = EPS_WATER, mi = -sm / w;
+    const nr = pr - mr, ni = pi - mi, dr = pr + 2 * mr, di = pi + 2 * mi;
+    return (nr * dr + ni * di) / (dr * dr + di * di);
   }
 
-  function physics(f, p) {
-    const sm = p.sigma_m * 1e-4;
-    let b;
-    if (p.model === "au_sio2") b = (p.a_core + p.t_shell) * 1e-9;
-    else b = p.radius * 1e-9;
-    const lam = (p.debye_nm === null || p.debye_nm === undefined)
-      ? 0.304e-9 / Math.sqrt(sm / KCL_MOLAR_COND * 1e-3) : p.debye_nm * 1e-9;
-    const U0 = Math.PI * EPS_M * b ** 3 * (p.V0 / (p.gap * 1e-6)) ** 2 / KT;
-    const D = KT / (6 * Math.PI * ETA * b) * 1e12;                    // um^2/s
-    const c = p.c_inf * 1e-12;                                        // 1/um^3
-    const N_cap = p.phi_max * p.V_trap / (4 / 3 * Math.PI * (b * 1e6) ** 3);
-    const N_res = c * p.V_trap;
-    const J_D = 4 * D * c * p.a_trap;
-    const n = f.length;
-    const ReK = new Array(n), S = new Array(n), Omega = new Array(n), U = new Array(n), N_eq = new Array(n),
-      tau_l = new Array(n), g = new Array(n), k_out = new Array(n);
-    for (let i = 0; i < n; i++) {
-      const w = 2 * Math.PI * f[i];
-      const em = [EPS_M, -sm / w];
-      let ep;
-      if (p.model === "au_sio2") {
-        const a = p.a_core * 1e-9, r3 = (b / a) ** 3;
-        const ec = [EPS0, -SIGMA_AU / w], es = [EPS_SIO2, 0];
-        const G = cdiv(csub(ec, es), cadd(ec, cscale(es, 2)));
-        ep = cdiv(cmul(es, cadd([r3, 0], cscale(G, 2))), csub([r3, 0], G));
-        ep = [ep[0], ep[1] - 2 * p.K_s * 1e-9 / b / w];
-      } else {
-        ep = [p.eps_p * EPS0, -p.sigma_p * 1e-4 / w];
-      }
-      ReK[i] = cdiv(csub(ep, em), cadd(ep, cscale(em, 2)))[0];
-      Omega[i] = w * p.Lambda * EPS_M / lam * ELL / sm;
-      S[i] = Omega[i] ** 2 / (1 + Omega[i] ** 2);
-      U[i] = U0 * ReK[i] * S[i];
-      N_eq[i] = N_cap / (1 + N_cap / N_res * Math.exp(-U[i]));       // exp overflow -> Infinity -> N_eq = 0
-      tau_l[i] = p.l_trap ** 2 / D / (1 + Math.max(-U[i], 0));
-      const log_x = Math.log(J_D * tau_l[i] / N_res) - U[i];          // log(k_eq tau_l)
-      g[i] = 0.5 * (1 - Math.tanh(log_x / 2));
-      k_out[i] = 0.5 * (1 + Math.tanh(log_x / 2)) / tau_l[i];
+  function crossover(sm, sp) {
+    let prev = null;
+    for (let i = 0; i < 2000; i++) {
+      const f = Math.pow(10, 3 + 6 * i / 1999), k = reK(f, sp, sm);
+      if (prev !== null && Math.sign(k) !== Math.sign(prev.k)) return prev.f;
+      prev = { f, k };
     }
-    return { f, ReK, S, Omega, U, U0, D, N_cap, N_res, J_D, N_eq, tau_l, g, k_out, lam, f_c: sm / (2 * Math.PI * EPS_M) };
+    return NaN;
   }
 
-  function sweep(ph, direction, t_step, n_out = 40) {
-    const n = ph.f.length;
-    const idx = [...Array(n).keys()].sort((i, j) => ph.f[i] - ph.f[j]);
+  // field: { Omega, logO, nO, nRoi, nEnv, w, wSum, Vg, dFocus, data: Float32Array [nO][nRoi + nEnv] }
+  function makeField(meta, buffer) {
+    return { Omega: meta.Omega, logO: meta.Omega.map(Math.log), nO: meta.n_omega, nRoi: meta.n_roi, nEnv: meta.n_env,
+             w: Float64Array.from(meta.w), wSum: meta.w_sum, Vg: meta.cell_volume, dFocus: meta.d_focus,
+             data: new Float32Array(buffer) };
+  }
+
+  // linear interpolation in log Omega, as FieldTable.depth_per_ReK: returns [i0, i1, t]
+  function interpIndex(field, Omega) {
+    const L = field.logO, n = L.length;
+    const x = Math.min(Math.max(Math.log(Omega), L[0]), L[n - 1]);
+    let i = 0;
+    while (i < n && L[i] < x) i++;                     // np.searchsorted (left)
+    i = Math.min(Math.max(i, 1), n - 1);
+    return [i - 1, i, (x - L[i - 1]) / (L[i] - L[i - 1])];
+  }
+
+  function precompute(field, freqs, ReK, Omega, V0, b_nm, phi_max) {
+    const Vg = field.Vg, stride = field.nRoi + field.nEnv;
+    const P_max = phi_max * Vg / (4 / 3 * Math.PI * Math.pow(b_nm * 1e-3, 3));
+    const P_res = C_INF * 1e-12 * Vg;
+    const scale = V0 * V0 * Math.pow(b_nm / 55.0, 3);
+    const Umax = [], Ieq = [];
+    for (let j = 0; j < freqs.length; j++) {
+      const [i0, i1, t] = interpIndex(field, Omega[j]);
+      const o0 = i0 * stride, o1 = i1 * stride, k = ReK[j], d = field.data;
+      let sum = 0;
+      for (let c = 0; c < field.nRoi; c++) {
+        const U = -k * scale * ((1 - t) * d[o0 + c] + t * d[o1 + c]);
+        const P = P_max / (1 + (P_max / P_res - 1) * Math.exp(U));   // exp overflow -> P = 0, as numpy
+        sum += field.w[c] * P;
+      }
+      Ieq.push(sum / (field.wSum * P_res));
+      let m = 0;
+      for (let c = field.nRoi; c < stride; c++) m = Math.max(m, (1 - t) * d[o0 + c] + t * d[o1 + c]);
+      Umax.push(Math.abs(k * scale * m));
+    }
+    const D = KT / (6 * Math.PI * ETA * b_nm * 1e-9) * 1e12;
+    return { freqs, ReK, Omega, Umax, Ieq, D, V_roi: 4 * field.wSum * Vg };
+  }
+
+  function sweep(pre, direction, gain, t_s = T_STEP, dt = 0.01, n_out = 10) {
+    const p = TOY, n = pre.freqs.length;
+    const idx = [...Array(n).keys()].sort((a, b) => pre.freqs[a] - pre.freqs[b]);
     const order = direction === "down" ? idx.slice().reverse() : idx;
-    let N = ph.N_res, t0 = 0;
-    const t = [0], Nt = [N], endByIndex = new Array(n);
+    const D = pre.D, R = 4 * D * p.a_eff / pre.V_roi, kD = D / (p.ell * p.ell), kb = R / p.J0;
+    const n_sub = Math.max(Math.round(t_s / dt), 1), h = t_s / n_sub, every = Math.max(Math.floor(n_sub / n_out), 1);
+    let I = 1.0, J = p.J0, t = 0;
+    const ts = [0], Is = [1.0], fs = [order[0] !== undefined ? pre.freqs[order[0]] : 0], ends = new Array(n);
     for (const i of order) {
-      const A = ph.g[i] * ph.J_D;
-      const B = A / ph.N_cap + ph.k_out[i];
-      const N_inf = A / B;
-      const N_start = N;
-      for (let k = 1; k <= n_out; k++) {
-        const s = t_step * k / n_out;
-        N = N_inf + (N_start - N_inf) * Math.exp(-B * s);
-        t.push(t0 + s); Nt.push(N);
+      const Ieq = pre.Ieq[i], U = pre.Umax[i], k = pre.ReK[i];
+      const k_out = k > 0 ? kD * Math.exp(-p.beta * U) : kD * (1 + U);
+      let kb_i = kb * gain[i], J_target = p.J0;
+      if (k <= 0 && p.gamma > 0) { J_target = p.J0 * Math.exp(-p.gamma * U); kb_i += kD; }
+      for (let s = 0; s < n_sub; s++) {
+        const rate = I < Ieq ? kD * J / Ieq : k_out;
+        const I_new = Ieq + (I - Ieq) * Math.exp(-rate * h);
+        J = Math.max(J_target + (J - J_target) * Math.exp(-kb_i * h) - (I_new - I), 0);
+        I = I_new; t += h;
+        if ((s + 1) % every === 0) { ts.push(t); Is.push(I); fs.push(pre.freqs[i]); }
       }
-      t0 += t_step;
-      endByIndex[i] = N;
+      ends[i] = I;
     }
-    return { t, N: Nt, f: idx.map(i => ph.f[i]), end: idx.map(i => endByIndex[i]) };
+    return { t: ts, I: Is, fAt: fs, ends };
   }
 
-  function run(overrides) {
-    const p = Object.assign({}, DEFAULTS, overrides || {});
-    const f = logspace(Math.log10(p.f_min), Math.log10(p.f_max), Math.round(p.n_f));
-    const ph = physics(f, p);
-    return { p, ph, sw: { up: sweep(ph, "up", p.t_step), down: sweep(ph, "down", p.t_step) } };
-  }
-
-  // area = integral |N_down - N_up| d log10 f / max N (decades); max_gap = max |N_down - N_up| / max N
-  function hysteresis(sw) {
-    const f = sw.up.f, up = sw.up.end, down = sw.down.end;
-    const top = Math.max(...up, ...down, 1e-300);
-    let area = 0, iMax = 0;
-    const gap = up.map((u, i) => Math.abs(down[i] - u));
-    for (let i = 0; i < gap.length; i++) {
-      if (gap[i] > gap[iMax]) iMax = i;
-      if (i > 0) area += 0.5 * (gap[i] + gap[i - 1]) * (Math.log10(f[i]) - Math.log10(f[i - 1]));
+  // one up + one down sweep at the Fig. 2 frequencies, as run() in the playground notebook
+  function run(field, prm) {
+    const q = Object.assign({}, DEFAULTS, prm);
+    const sm = q.sigma_m * 1e-4, sp = q.sigma_p * 1e-4;
+    const b = q.radius, be = Math.max(q.b_eff, q.radius);
+    const H = q.h_ch / field.dFocus;
+    const freqs = F_DATA;
+    const ReK = freqs.map(f => reK(f, sp, sm));
+    const lam = 0.304e-9 / Math.sqrt(sm / KCL_S_PER_M_PER_MM * 1e-3);
+    const Omega = freqs.map(f => 2 * Math.PI * f * q.Lambda * EPS_WATER * 1e-6 / (sm * lam));
+    const phi_max = 0.64 * Math.pow(b / be, 3);
+    const pre = precompute(field, freqs, ReK, Omega, q.V0, b, phi_max);
+    const gain = freqs.map(f => 1 + q.A * Math.pow(F_REF / f, 2));
+    const out = { pre, H, gain, f_x: crossover(sm, sp), f_c: sm / (2 * Math.PI * EPS_WATER), lam, params: q };
+    for (const d of ["up", "down"]) {
+      const s = sweep(pre, d, gain);
+      const S = s.I.map(I => (I + H) / (1 + H)), Smax = Math.max(...S);
+      out[d] = { t: s.t, I: s.I, S: S.map(x => x / Smax), fAt: s.fAt, f: freqs,
+                 end: s.ends.map(I => (I + H) / (1 + H) / Smax), raw_end: s.ends };
     }
-    // signed area: > 0 when the down sweep holds more particles than the up sweep
-    let signed = 0;
-    for (let i = 1; i < f.length; i++)
-      signed += 0.5 * ((down[i] - up[i]) + (down[i - 1] - up[i - 1])) * (Math.log10(f[i]) - Math.log10(f[i - 1]));
-    return { area: area / top, signed: signed / top, max_gap: gap[iMax] / top, f_max_gap: f[iMax], top,
-             max_gap_abs: gap[iMax] };
-  }
-
-  function crossovers(ph) {
-    const out = [];
-    for (let i = 0; i + 1 < ph.f.length; i++)
-      if (Math.sign(ph.ReK[i]) !== Math.sign(ph.ReK[i + 1])) out.push(ph.f[i]);
+    let e = 0;
+    for (let i = 0; i < 30; i++) e += ((out.up.end[i] - UP_DATA[i]) ** 2 + (out.down.end[i] - DOWN_DATA[i]) ** 2) / 30;
+    out.rms = Math.sqrt(e / 2);
     return out;
   }
 
-  const api = { DEFAULTS, PRESETS, physics, sweep, run, hysteresis, crossovers, logspace };
+  // hysteresis of the normalised end-of-step curves: area = integral |down - up| d log10 f (decades),
+  // signed (> 0: down sweep brighter), max gap and where
+  function hysteresis(m) {
+    const f = m.up.f, u = m.up.end, d = m.down.end;
+    let area = 0, signed = 0, iMax = 0;
+    for (let i = 0; i < f.length; i++) {
+      if (Math.abs(d[i] - u[i]) > Math.abs(d[iMax] - u[iMax])) iMax = i;
+      if (i > 0) {
+        const dx = Math.log10(f[i]) - Math.log10(f[i - 1]);
+        area += 0.5 * (Math.abs(d[i] - u[i]) + Math.abs(d[i - 1] - u[i - 1])) * dx;
+        signed += 0.5 * ((d[i] - u[i]) + (d[i - 1] - u[i - 1])) * dx;
+      }
+    }
+    return { area, signed, max_gap: Math.abs(d[iMax] - u[iMax]), f_max_gap: f[iMax] };
+  }
+
+  const api = { DEFAULTS, TOY, A_FIT, F_REF, F_DATA, UP_DATA, DOWN_DATA, makeField, precompute, sweep, run, hysteresis,
+                crossover, reK };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
-  else root.TrapToy = api;
+  else root.Fig2Toy = api;
 })(this);
