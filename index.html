@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEP Trap Hysteresis</title>
+<meta name="description" content="Interactive toy model of nanoparticle trapping in a quadrupole DEP trap: drag the sliders and read the up/down frequency-sweep hysteresis.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script src="model.js"></script>
+<style>
+:root {
+  --bg: #fbfbf9; --panel: #ffffff; --ink: #1d1f24; --muted: #5f6672; --line: #e2e4e8;
+  --up: #c8402f; --down: #2563b0; --accent: #0f7b6c; --eq: #444;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171b; --panel: #1d2026; --ink: #e8e9ec; --muted: #9aa1ad; --line: #2e323a;
+    --up: #f0705f; --down: #6aa5f0; --accent: #3cc2ad; --eq: #bbb;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171b; --panel: #1d2026; --ink: #e8e9ec; --muted: #9aa1ad; --line: #2e323a;
+  --up: #f0705f; --down: #6aa5f0; --accent: #3cc2ad; --eq: #bbb;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { padding: 28px 16px 8px; max-width: 1320px; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--muted); max-width: 72ch; }
+nav { margin-top: 10px; display: flex; gap: 16px; font-size: 0.92rem; }
+a { color: var(--accent); }
+main { max-width: 1320px; margin: 0 auto; padding: 8px 16px 40px; }
+.app { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .app { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.controls { position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow-y: auto; }
+@media (max-width: 900px) { .controls { position: static; max-height: none; } }
+.controls h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+  margin: 14px 0 6px; font-weight: 600; }
+.controls h3:first-child { margin-top: 0; }
+.row { margin: 7px 0 9px; }
+.row label { display: flex; justify-content: space-between; font-size: 0.88rem; gap: 8px; }
+.row label span.v { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; white-space: nowrap; }
+.row .hint { font-size: 0.75rem; color: var(--muted); }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
+select, button { font: inherit; font-size: 0.88rem; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+@media (max-width: 640px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.metric { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.metric .k { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.metric .val { font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.metric .sub { font-size: 0.78rem; color: var(--muted); }
+.app > div, .card { min-width: 0; }
+.plots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.plot { height: 380px; width: 100%; }
+.plot.small { height: 320px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.derived { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 10px; }
+.derived b { color: var(--ink); font-weight: 600; }
+article { max-width: 80ch; margin: 34px auto 0; }
+article h2 { font-size: 1.3rem; margin-top: 2em; border-top: 1px solid var(--line); padding-top: 1em; }
+article h3 { font-size: 1.05rem; margin-top: 1.5em; }
+article table { border-collapse: collapse; font-size: 0.9rem; width: 100%; }
+article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; position: relative; }
+article { position: relative; overflow-wrap: break-word; }
+.katex { position: relative; }
+code { font-size: 0.88em; background: var(--line); padding: 1px 4px; border-radius: 4px; }
+footer { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 20px 16px 30px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DEP trap hysteresis: toy model</h1>
+  <p>Nanoparticles in a quadrupole electrode trap, driven by a staircase of frequencies swept up and down. Move a slider and
+  the model recomputes both sweeps (it is solved exactly, so this takes well under a millisecond). The difference between
+  the two curves is the hysteresis.</p>
+  <nav><a href="#playground">Playground</a><a href="#model">The model</a><a href="#numerics">From 3D Fokker–Planck to the toy</a></nav>
+</header>
+
+<main>
+<section id="playground" class="app">
+  <aside class="card controls" id="controls">
+    <h3>Preset</h3>
+    <select id="preset" aria-label="Preset"></select>
+    <div class="btns"><button id="reset">Reset to preset</button><button id="csv">Download CSV</button></div>
+    <div id="sliders"></div>
+  </aside>
+
+  <div>
+    <div class="metrics" id="metrics"></div>
+    <div class="plots">
+      <div class="card"><div id="p-hyst" class="plot"></div></div>
+      <div class="two">
+        <div class="card"><div id="p-cm" class="plot small"></div></div>
+        <div class="card"><div id="p-time" class="plot small"></div></div>
+      </div>
+    </div>
+    <div class="derived card" id="derived"></div>
+  </div>
+</section>
+
+<article id="model">
+<h2>The model</h2>
+<p>The full problem is a 3D Smoluchowski (Fokker–Planck) equation for the particle density in the DEP potential of a
+quadrupole of four plates (10&nbsp;µm wide, 0.6&nbsp;µm gap), solved with a Chang–Cooper scheme for each frequency of an
+experimental staircase. One sweep takes 1–2 hours on a GPU. The toy keeps only the physics that controls the measured
+signal, and runs a sweep in microseconds.</p>
+
+<h3>1. Diffusion to the trap</h3>
+<p>The trap is short range: seen from the bulk it is a perfect sink of radius $a$ on a reflecting wall, so particles
+arrive at the diffusion-limited rate</p>
+$$J_D = 4\,D\,c_\infty\,a, \qquad D = \frac{k_BT}{6\pi\eta b}.$$
+
+<h3>2. Trap depth</h3>
+<p>The depth $U(f)$ in units of $k_BT$ ($U&gt;0$ attracts, pDEP; $U&lt;0$ repels, nDEP) is</p>
+$$U(f) = U_0\;\mathrm{Re}\,K(f)\;S(f), \qquad U_0 = \frac{\pi\varepsilon_m b^3 (V_0/g)^2}{k_BT},$$
+<ul>
+<li><b>Clausius–Mossotti factor</b> $K = (\tilde\varepsilon_p-\tilde\varepsilon_m)/(\tilde\varepsilon_p+2\tilde\varepsilon_m)$, with
+$\tilde\varepsilon = \varepsilon - i\sigma/\omega$. For Au@SiO2 the particle is a gold core (radius $a_c$,
+$\sigma = 4.1\cdot10^7$&nbsp;S/m) in an insulating silica shell ($\varepsilon = 3.9$), outer radius $b=a_c+t$, with the
+surface conductance $K_s$ of the CTAC-covered silica ($\sigma_p\to\sigma_p + 2K_s/b$). For polystyrene (PS) it is a
+homogeneous sphere.</li>
+<li><b>Electrode screening</b> $S(f) = \Omega^2/(1+\Omega^2)$: double layer and bulk in series (an RC circuit), with
+$\Omega = 2\pi f\, C_{DL}\,\ell/\sigma_m$, $C_{DL} = \Lambda\varepsilon_m/\lambda_D$ and $\ell = 1\,\mu$m. At low frequency the
+double layer on the electrodes absorbs the voltage and the trap disappears. $\Lambda$ is the Stern factor.</li>
+<li>$U_0$ uses the gap $g$: it gives 245&nbsp;kT for 55&nbsp;nm, 1&nbsp;V, 0.6&nbsp;µm, against 248&nbsp;kT for the maximum depth of the full 3D field.</li>
+</ul>
+
+<h3>3. Capacity</h3>
+<p>The trap volume $V_t$ holds at most $N_{cap} = \phi_{max} V_t / V_{NP}$ particles (packing). Without a trap it holds
+$N_{res} = c_\infty V_t$.</p>
+
+<h3>4. One equation for the trapped particles</h3>
+$$\frac{dN}{dt} = g\,J_D\left[\Big(1-\frac{N}{N_{cap}}\Big) - \frac{N}{N_{res}}\,e^{-U(f)}\right].$$
+<p>Its fixed point is the Fermi–Dirac (packing-limited Boltzmann) content
+$N_{eq} = N_{cap}/\big[1 + (N_{cap}/N_{res})\,e^{-U}\big]$, so the same equation fills the trap under pDEP (capped at $N_{cap}$)
+and empties it under nDEP.</p>
+
+<h3>5. Time to leave the trap</h3>
+<p>Without $g$, the escape rate $k_{eq} = (J_D/N_{res})\,e^{-U}$ grows as $e^{|U|}$ under nDEP, without bound. But a particle in
+the trap still has to cross the trap size $l_t$, which takes at least $\tau_l = l_t^2/D$. Transport between bulk and trap and
+crossing of the trap are two steps in series (as diffusion and reaction in Collins–Kimball), so both rates are multiplied by</p>
+$$g = \frac{1}{1 + k_{eq}\,\tau_l}, \qquad \tau_l = \frac{l_t^2}{D\,(1+\max(-U,0))},$$
+<p>which keeps $N_{eq}$ unchanged. Under nDEP the force also pushes particles out (drift $D|U|/l_t$), hence the factor
+$1+|U|$. Deep pDEP: $g=1$, filling at the diffusive rate. nDEP or shallow trap: escape at rate $\sim 1/\tau_l$.</p>
+
+<h3>6. The staircase and the hysteresis</h3>
+<p>Each sweep starts from $N=N_{res}$ (no trap) and visits $n_f$ log-spaced frequencies for $t_{step}$ each, upward or downward.
+The equation is linear in $N$ on each step ($dN/dt = A - BN$), so it is integrated exactly:
+$N(t) = N_\infty + (N_0 - N_\infty)e^{-Bt}$. The plotted curve is $N$ at the end of each step.</p>
+<p>The hysteresis comes from the fact that the trap fills at a finite rate (diffusion) and is capped (packing), while it
+empties fast once it turns repulsive. The up sweep reaches each frequency with whatever the previous steps collected; the down
+sweep reaches the same frequency with a different history. The metrics above are:</p>
+<table>
+<tr><th>metric</th><th>definition</th></tr>
+<tr><td>Hysteresis area</td><td>$\displaystyle \frac{1}{N_{max}}\int |N_{down}-N_{up}|\, d\log_{10} f$ (in decades; 1 = the curves differ by the full signal over one decade)</td></tr>
+<tr><td>Signed area</td><td>same with $N_{down}-N_{up}$: positive when the down sweep holds more particles</td></tr>
+<tr><td>Max gap</td><td>$\max_f |N_{down}-N_{up}| / N_{max}$, and the frequency where it occurs</td></tr>
+</table>
+<p>$N_{max}$ is the largest end-of-step content of either sweep. The output is the number of trapped particles: there is no
+intensity, normalisation or out-of-focus background in this toy.</p>
+
+<h2 id="numerics">From 3D Fokker–Planck to the toy</h2>
+<p>The reference simulations solve, for the particle density $P$,</p>
+$$\partial_t P = \nabla\cdot\big[D\,(\nabla P - P\,\mathbf F\,(1-P/P_{max}))\big], \qquad \mathbf F = -\nabla U,$$
+<p>with a mean-field packing limit $P_{max}$, a reflecting substrate and a reservoir (Robin or Dirichlet) far away. Space is
+discretised with the <b>Chang–Cooper</b> finite-volume scheme: the face fluxes are weighted with the Bernoulli function
+$B(w) = w/(e^w-1)$ of the potential jump $w$ between neighbouring cells,</p>
+$$J_{i+1/2} = \frac{D}{\Delta x}\Big[B(w)\,P_i - B(-w)\,P_{i+1}\Big],$$
+<p>which keeps the density positive and reproduces the Boltzmann equilibrium exactly at steady state, however deep the trap.
+Time is stepped with backward Euler (Newton iterations in logit variables when the packing term is on). The DEP potential
+comes from a boundary-integral solution of the screened electrode problem for each $\Omega$.</p>
+<p>The 3D runs showed that the measured content is controlled by a few things only: the equilibrium content (Fermi–Dirac with
+packing), the diffusive supply from the bulk ($4Dc_\infty a_{eff}$ with $a_{eff}\approx 10\,\mu$m), and how fast a shallow or
+repulsive trap releases particles. The toy is built from exactly those ingredients.</p>
+<p>Source: <a href="https://github.com/Padisi/DEPHisteresis">github.com/Padisi/DEPHisteresis</a>.
+<code>toy/trap_toy.py</code> is the Python reference; <code>docs/model.js</code> is the same model in JavaScript (agreement to
+round-off); <code>toy/trap_diffusion_toy.ipynb</code> is the notebook with ipywidgets sliders.</p>
+</article>
+</main>
+<footer>DEP trap toy model · all computation runs in your browser</footer>
+
+<script>
+(function () {
+  "use strict";
+  const T = window.TrapToy;
+  // slider specs: [key, label, unit, kind, lo, hi, step, models]
+  //   kind "log": lo/hi are log10 bounds; "lin": plain bounds
+  const GROUPS = [
+    ["Particle", [
+      ["a_core", "Au core radius a_c", "nm", "lin", 5, 100, 2.5, ["au_sio2"]],
+      ["t_shell", "SiO2 shell thickness t", "nm", "lin", 2, 100, 2, ["au_sio2"]],
+      ["K_s", "Surface conductance K_s", "nS", "log", -2, 1.5, 0.02, ["au_sio2"]],
+      ["radius", "Radius b", "nm", "lin", 25, 500, 5, ["homogeneous"]],
+      ["eps_p", "Permittivity ε_p", "", "lin", 1.5, 20, 0.05, ["homogeneous"]],
+      ["sigma_p", "Conductivity σ_p", "µS/cm", "log", 0, 4, 0.02, ["homogeneous"]],
+    ]],
+    ["Medium and electrodes", [
+      ["sigma_m", "Medium conductivity σ_m", "µS/cm", "log", 0, 3, 0.02],
+      ["debye_nm", "Debye length λ_D", "nm", "log", 0, 2, 0.02],
+      ["Lambda", "Stern factor Λ", "", "log", -4, 0, 0.02],
+      ["V0", "Voltage V_0", "V", "log", -1, 1, 0.02],
+      ["gap", "Electrode gap g", "µm", "log", -1, 1, 0.02],
+    ]],
+    ["Trap", [
+      ["a_trap", "Capture radius a", "µm", "log", -1, 2, 0.02],
+      ["l_trap", "Trap size l_t", "µm", "log", -1, 1.5, 0.02],
+      ["V_trap", "Trap volume V_t", "µm³", "log", -1, 3, 0.02],
+      ["phi_max", "Packing fraction φ_max", "", "lin", 0.05, 0.74, 0.01],
+      ["c_inf", "Bulk concentration c_∞", "/mL", "log", 8, 13, 0.05],
+    ]],
+    ["Sweep", [
+      ["t_step", "Time per frequency", "s", "log", -1, 2.5, 0.02],
+      ["f_min", "Lowest frequency", "Hz", "log", 3, 7, 0.05],
+      ["f_max", "Highest frequency", "Hz", "log", 5, 9, 0.05],
+      ["n_f", "Number of frequencies", "", "lin", 5, 120, 1],
+    ]],
+  ];
+
+  let state = {}, preset = "Au@SiO2, 1 mM CTAC", last = null;
+  const inputs = {};
+
+  const fmt = v => {
+    if (v === null || v === undefined || !isFinite(v)) return "—";
+    const a = Math.abs(v);
+    if (a !== 0 && (a >= 1e5 || a < 1e-2)) return v.toExponential(2).replace("e+", "e");
+    if (a >= 100) return v.toFixed(0);
+    if (a >= 10) return v.toFixed(1);
+    return v.toFixed(a >= 1 ? 2 : 3);
+  };
+  const fmtF = f => f >= 1e6 ? (f / 1e6).toPrecision(3) + " MHz" : f >= 1e3 ? (f / 1e3).toPrecision(3) + " kHz" : f.toPrecision(3) + " Hz";
+
+  function buildSliders() {
+    const root = document.getElementById("sliders");
+    for (const [title, specs] of GROUPS) {
+      const h = document.createElement("h3"); h.textContent = title; root.appendChild(h);
+      for (const [key, label, unit, kind, lo, hi, step, models] of specs) {
+        const row = document.createElement("div"); row.className = "row";
+        if (models) row.dataset.models = models.join(",");
+        const id = "s-" + key;
+        row.innerHTML = `<label for="${id}"><span>${label}</span><span class="v" id="v-${key}"></span></label>
+          <input type="range" id="${id}" min="${lo}" max="${hi}" step="${step}">`;
+        root.appendChild(row);
+        const el = row.querySelector("input");
+        inputs[key] = { el, kind, unit, row };
+        el.addEventListener("input", () => {
+          const x = parseFloat(el.value);
+          state[key] = kind === "log" ? Math.pow(10, x) : x;
+          update();
+        });
+      }
+    }
+  }
+
+  function syncSliders() {
+    // a preset with debye_nm = null derives λ_D from σ_m (as KCl); show that value on the slider
+    for (const key in inputs) {
+      const { el, kind, row } = inputs[key];
+      let v = state[key];
+      if (key === "debye_nm" && (v === null || v === undefined))
+        v = 0.304 / Math.sqrt(state.sigma_m * 1e-4 / 149.9e-4 * 1e-3);
+      el.value = kind === "log" ? Math.log10(v) : v;
+      row.style.display = row.dataset.models && !row.dataset.models.split(",").includes(state.model) ? "none" : "";
+    }
+  }
+
+  function labels() {
+    for (const key in inputs) {
+      const { unit } = inputs[key];
+      let v = state[key];
+      let txt;
+      if (key === "debye_nm" && (v === null || v === undefined)) txt = "from σ_m";
+      else if (key === "f_min" || key === "f_max") txt = fmtF(v);
+      else if (key === "n_f") txt = String(Math.round(v));
+      else txt = fmt(v) + (unit ? " " + unit : "");
+      document.getElementById("v-" + key).textContent = txt;
+    }
+  }
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function layout(title, xt, yt, extra) {
+    const ink = css("--ink"), muted = css("--muted"), line = css("--line");
+    const ax = { gridcolor: line, zerolinecolor: line, linecolor: line, color: muted, title: { font: { color: ink } } };
+    return Object.assign({
+      title: { text: title, font: { size: 14, color: ink }, x: 0.01, xanchor: "left" },
+      paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+      font: { family: "system-ui, sans-serif", size: 12, color: muted },
+      margin: { l: 62, r: 20, t: 40, b: 90 },
+      legend: { orientation: "h", x: 0, y: -0.28, yanchor: "top", font: { color: ink } },
+      xaxis: Object.assign({}, ax, { title: { text: xt, font: { color: ink } } }),
+      yaxis: Object.assign({}, ax, { title: { text: yt, font: { color: ink } } }),
+    }, extra || {});
+  }
+  const CFG = { responsive: true, displayModeBar: false };
+
+  function update() {
+    if (state.f_max <= state.f_min * 1.01) state.f_max = state.f_min * 1.01;
+    labels();
+    const r = T.run(state);
+    last = r;
+    const { ph, sw } = r;
+    const h = T.hysteresis(sw);
+    const up = css("--up"), down = css("--down"), eq = css("--eq"), acc = css("--accent");
+
+    document.getElementById("metrics").innerHTML = [
+      ["Hysteresis area", fmt(h.area), "decades (normalised)"],
+      ["Signed area", (h.signed >= 0 ? "+" : "") + fmt(h.signed), h.signed >= 0 ? "down sweep holds more" : "up sweep holds more"],
+      ["Max gap", fmt(h.max_gap), "at " + fmtF(h.f_max_gap)],
+      ["Max N", fmt(h.top), "particles; N_cap = " + fmt(ph.N_cap)],
+    ].map(([k, v, s]) => `<div class="metric"><div class="k">${k}</div><div class="val">${v}</div><div class="sub">${s}</div></div>`).join("");
+
+    const top = 1.15 * Math.max(...sw.up.N, ...sw.down.N);
+    Plotly.react("p-hyst", [
+      { x: sw.up.f, y: sw.up.end, name: "up sweep", mode: "lines+markers", line: { color: up, width: 2 }, marker: { size: 5 },
+        hovertemplate: "%{x:.3s}Hz<br>N = %{y:.4g}<extra>up</extra>" },
+      { x: sw.down.f, y: sw.down.end, name: "down sweep", mode: "lines+markers", line: { color: down, width: 2 }, marker: { size: 5 },
+        fill: "tonexty", fillcolor: down + "22", hovertemplate: "%{x:.3s}Hz<br>N = %{y:.4g}<extra>down</extra>" },
+      { x: ph.f, y: ph.N_eq, name: "N_eq (equilibrium)", mode: "lines", line: { color: eq, width: 1, dash: "dash" },
+        hovertemplate: "%{x:.3s}Hz<br>N_eq = %{y:.4g}<extra></extra>" },
+    ], layout("N at the end of each step (shaded: hysteresis)", "frequency (Hz)", "N (trapped particles)", {
+      xaxis: Object.assign(layout().xaxis, { type: "log", title: { text: "frequency (Hz)", font: { color: css("--ink") } } }),
+      yaxis: Object.assign(layout().yaxis, { range: [0, top], title: { text: "N (trapped particles)", font: { color: css("--ink") } } }),
+    }), CFG);
+
+    const ReKS = ph.ReK.map((k, i) => k * ph.S[i]);
+    Plotly.react("p-cm", [
+      { x: ph.f, y: ph.ReK, name: "Re K", mode: "lines", line: { color: css("--ink"), width: 1.5 } },
+      { x: ph.f, y: ph.S, name: "screening S", mode: "lines", line: { color: "#d88a1c", width: 1.5 } },
+      { x: ph.f, y: ReKS, name: "Re K · S", mode: "lines", line: { color: acc, width: 2, dash: "dot" } },
+      { x: ph.f, y: ph.U, name: "U (kT), right", mode: "markers", marker: { color: acc, size: 4 }, yaxis: "y2",
+        hovertemplate: "%{x:.3s}Hz<br>U = %{y:.4g} kT<extra></extra>" },
+    ], layout("Clausius–Mossotti, screening, depth", "frequency (Hz)", "", {
+      xaxis: Object.assign(layout().xaxis, { type: "log", title: { text: "frequency (Hz)", font: { color: css("--ink") } } }),
+      yaxis2: { overlaying: "y", side: "right", color: css("--muted"), gridcolor: "rgba(0,0,0,0)", zerolinecolor: css("--line"),
+                title: { text: "U (kT)", font: { color: css("--ink") } } },
+      margin: { l: 50, r: 56, t: 40, b: 90 },
+    }), CFG);
+
+    Plotly.react("p-time", [
+      { x: sw.up.t, y: sw.up.N, name: "up", mode: "lines", line: { color: up, width: 1.5 } },
+      { x: sw.down.t, y: sw.down.N, name: "down", mode: "lines", line: { color: down, width: 1.5 } },
+    ], layout("N(t) during the staircase", "time (s)", "N", {
+      yaxis: Object.assign(layout().yaxis, { range: [0, top], title: { text: "N", font: { color: css("--ink") } } }),
+    }), CFG);
+
+    const fx = T.crossovers(ph);
+    const tauMin = Math.min(...ph.tau_l);
+    document.getElementById("derived").innerHTML =
+      `<b>D</b> = ${fmt(ph.D)} µm²/s · <b>J_D</b> = 4Dca = ${fmt(ph.J_D)} /s · <b>N_cap</b> = ${fmt(ph.N_cap)} · ` +
+      `<b>N_res</b> = c V_t = ${fmt(ph.N_res)} · <b>fill time</b> N_cap/J_D = ${fmt(ph.N_cap / ph.J_D)} s · ` +
+      `<b>l²/D</b> = ${fmt(state.l_trap ** 2 / ph.D)} s (min τ_l with nDEP push ${fmt(tauMin)} s)<br>` +
+      `<b>U_0</b> = ${fmt(ph.U0)} kT · <b>λ_D</b> = ${fmt(ph.lam * 1e9)} nm · <b>f_c</b> = σ_m/2πε_m = ${fmtF(ph.f_c)} · ` +
+      `<b>Ω = 1</b> at ${fmtF(ph.f[0] / ph.Omega[0])} · <b>CM crossover</b>: ${fx.length ? fx.map(fmtF).join(", ") : "none in the window"}`;
+  }
+
+  function applyPreset(name) {
+    preset = name;
+    state = Object.assign({}, T.DEFAULTS, T.PRESETS[name]);
+    syncSliders();
+    update();
+  }
+
+  function downloadCSV() {
+    if (!last) return;
+    const { ph, sw } = last, h = T.hysteresis(sw);
+    const lines = ["# DEP trap toy model, " + preset, "# parameters: " + JSON.stringify(state),
+      `# hysteresis area ${h.area}, signed ${h.signed}, max gap ${h.max_gap} at ${h.f_max_gap} Hz`,
+      "f_Hz,N_up,N_down,N_eq,ReK,S,U_kT"];
+    sw.up.f.forEach((f, i) => lines.push([f, sw.up.end[i], sw.down.end[i], ph.N_eq[i], ph.ReK[i], ph.S[i], ph.U[i]].join(",")));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
+    a.download = "dep_toy_hysteresis.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  const sel = document.getElementById("preset");
+  for (const name in T.PRESETS) { const o = document.createElement("option"); o.textContent = name; sel.appendChild(o); }
+  sel.value = preset;
+  sel.addEventListener("change", () => applyPreset(sel.value));
+  document.getElementById("reset").addEventListener("click", () => applyPreset(sel.value));
+  document.getElementById("csv").addEventListener("click", downloadCSV);
+  buildSliders();
+  applyPreset(preset);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", update);
+
+  window.addEventListener("load", () => {
+    if (window.renderMathInElement) renderMathInElement(document.querySelector("article"), {
+      delimiters: [{ left: "$$", right: "$$", display: true }, { left: "$", right: "$", display: false }] });
+  });
+})();
+</script>
+</body>
+</html>
