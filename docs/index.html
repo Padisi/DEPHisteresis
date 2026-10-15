@@ -34,10 +34,14 @@ h2 { font-size: 1.25rem; margin: 22px 0 4px; }
 .lead { margin: 0; color: var(--muted); }
 a { color: var(--accent); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-.sliders { display: grid; grid-template-columns: max-content minmax(0, 1fr) 6.5em; gap: 6px 12px; align-items: center; }
+.sliders { display: grid; grid-template-columns: max-content minmax(0, 1fr) 7.5em; gap: 6px 12px; align-items: center; }
 .sliders label { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; text-align: right; }
 .sliders .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem;
-  font-variant-numeric: tabular-nums; color: var(--ink); }
+  font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); width: 100%;
+  border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+.sliders .v:focus { outline: none; border-color: var(--accent); }
+.sliders .v.bad { border-color: #d62728; }
+.sliders span.hint { padding-left: 7px; }
 .sliders .sep { grid-column: 1 / -1; border-top: 1px solid var(--line); margin: 6px 0 2px; }
 .sliders .off { opacity: 0.4; }
 input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
@@ -55,7 +59,7 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; position: relative; }
 .katex { position: relative; }
 @media (max-width: 560px) {
-  .sliders { grid-template-columns: minmax(0, 1fr) 6em; }
+  .sliders { grid-template-columns: minmax(0, 1fr) 7em; }
   .sliders label { grid-column: 1 / -1; text-align: left; margin-bottom: -4px; }
 }
 </style>
@@ -63,7 +67,7 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
 <body>
 <main>
   <h1>DEP trap toy model: playground (Fig. 2, 200 nm PS)</h1>
-  <p class="lead">Move a slider and the curves update.</p>
+  <p class="lead">Move a slider, or type a value in its box and press Enter, and the curves update.</p>
 
   <h2>Sliders</h2>
   <div class="card">
@@ -139,12 +143,24 @@ article td, article th { border-bottom: 1px solid var(--line); padding: 5px 8px;
     const el = document.createElement("input");
     Object.assign(el, { type: "range", id: "s-" + name, min: lo, max: hi, step });
     el.value = kind === "log" ? Math.log10(value) : value;
-    const v = document.createElement("span"); v.className = "v"; v.textContent = show(value);
+    // editable value box: typed values may go beyond the slider range (the slider then sits at its end)
+    const v = document.createElement("input");
+    Object.assign(v, { type: "text", className: "v", value: show(value), inputMode: "decimal", spellcheck: false });
+    v.setAttribute("aria-label", name + " value");
     el.addEventListener("input", () => {
       const x = kind === "log" ? Math.pow(10, parseFloat(el.value)) : parseFloat(el.value);
-      v.textContent = show(x);
+      v.value = show(x); v.classList.remove("bad");
       onInput(x);
     });
+    const commit = () => {
+      const x = Number(v.value.trim().replace(",", "."));
+      if (!isFinite(x) || x <= 0) { v.classList.add("bad"); return; }
+      v.classList.remove("bad");
+      el.value = kind === "log" ? Math.log10(x) : x;
+      onInput(x);
+    };
+    v.addEventListener("change", commit);
+    v.addEventListener("keydown", e => { if (e.key === "Enter") { commit(); v.select(); } });
     root.append(lab, el, v);
     return [lab, el, v];
   }
