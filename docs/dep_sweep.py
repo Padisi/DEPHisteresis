@@ -83,7 +83,11 @@ def run(params, progress=None):
     den = (m.eps_m - m.eps_p) * (m.eps_p + 2 * m.eps_m)
     f_cross = float(np.sqrt(num / den) / (2 * np.pi)) if num / den > 0 else None
     N_roi0 = np.pi * m.n0 * params["r_ROI"] ** 2 / 2 * L  # N inicial en la ROI (uniforme)
+    f_fine = np.logspace(np.log10(params["f_min"]), np.log10(params["f_max"]), 300)
     return dict(
+        f_fine=f_fine.tolist(),                          # curvas continuas de Re[K] y S
+        ReK_fine=m.K_CM(f_fine).real.tolist(),
+        S_fine=m.S(f_fine).tolist(),
         f=f.tolist(),
         ReK=m.K_CM(f).real.tolist(),
         S=m.S(f).tolist(),
