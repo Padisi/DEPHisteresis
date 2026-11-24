@@ -59,25 +59,24 @@ class DEPModel:
         p = self.p
         N = int(p["N"])
         phi = np.full(N, self.phi0)
-        N_end, N_eq = [], []
+        N_end = []
         for k, f in enumerate(freqs):
             fp = RadialFokkerPlanck(p["R"], N, self.D, self.drift(f), p["phi_max"],
                                     outer_bc="dirichlet", P_outer=self.phi0)
             _, P = fp.solve(phi, p["t_step"], n_out=2)
             phi = P[:, -1]
             N_end.append(self.N_roi_per_m(fp, phi))
-            N_eq.append(self.N_roi_per_m(fp, fp.steady_state()))
             if progress is not None:
                 progress(label, k + 1, len(freqs))
-        return np.array(N_end), np.array(N_eq)
+        return np.array(N_end)
 
 
 def run(params, progress=None):
     """Devuelve un dict serializable con N en la ROI (por m y total) para ambos sentidos."""
     m = DEPModel(params)
     f = m.freqs
-    asc, eq = m.sweep(f, progress, "ascendente")
-    desc, _ = m.sweep(f[::-1], progress, "descendente")
+    asc = m.sweep(f, progress, "ascendente")
+    desc = m.sweep(f[::-1], progress, "descendente")
     desc = desc[::-1]                                   # reordenado por frecuencia creciente
     L = params["L_el"]
     num = (params["sig_p"] - params["sig_m"]) * (params["sig_p"] + 2 * params["sig_m"])
@@ -91,7 +90,6 @@ def run(params, progress=None):
         U_rc_kT=(-m.A(f) / params["r_c"] ** 2 / m.kT).tolist(),
         N_asc=(asc * L).tolist(),
         N_desc=(desc * L).tolist(),
-        N_eq=(eq * L).tolist(),
         N_roi0=float(N_roi0),
         phi0=float(m.phi0),
         D=float(m.D),

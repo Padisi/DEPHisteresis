@@ -73,8 +73,7 @@
          Ω = ωΛε<sub>m</sub>l<sub>c</sub>/(σ<sub>m</sub>λ<sub>D</sub>), S = Ω²/(1+Ω²).</p>
       <p>∂<sub>t</sub>φ = −(1/r)∂<sub>r</sub>(rJ), J = vφ(1 − φ/φ<sub>max</sub>) − D∂<sub>r</sub>φ, v = −U′/(6πηa), D = k<sub>B</sub>T/(6πηa).
          Reservorio a φ₀ = n₀·(4/3)πa³ en r = R. Para r &lt; r<sub>c</sub> no hay fuerza (corte de la ley 1/r en el hueco).</p>
-      <p>N en la ROI = L · π ∫₀^{r<sub>ROI</sub>} n(r) r dr (semiplano del fluido), evaluado al final de cada tramo.
-         «Equilibrio» es el valor estacionario (t → ∞) a esa frecuencia, independiente de la historia.</p>
+      <p>N en la ROI = L · π ∫₀^{r<sub>ROI</sub>} n(r) r dr (semiplano del fluido), evaluado al final de cada tramo.</p>
     </details>
   </section>
 </main>
@@ -86,22 +85,22 @@ const FIELDS = [
     ["T", "Temperatura", "K", 298.15],
     ["eta", "Viscosidad η", "Pa·s", "8.9e-4"],
     ["eps_m_r", "Permitividad relativa ε<sub>m</sub>/ε₀", "", 78.5],
-    ["sig_m", "Conductividad σ<sub>m</sub>", "S/m", "2e-3"],
+    ["sig_m", "Conductividad σ<sub>m</sub>", "S/m", "4.5e-3"],
   ]],
   ["Partícula", [
     ["a", "Radio a", "m", "50e-9"],
     ["eps_p_r", "Permitividad relativa ε<sub>p</sub>/ε₀", "", 2.55],
-    ["sig_p", "Conductividad σ<sub>p</sub>", "S/m", 0.04],
+    ["sig_p", "Conductividad σ<sub>p</sub>", "S/m", "7e-3"],
     ["n0_mL", "Concentración n₀", "mL⁻¹", "1e11"],
-    ["phi_max", "Empaquetamiento φ<sub>max</sub>", "", 0.64],
+    ["phi_max", "Empaquetamiento φ<sub>max</sub>", "", 0.2],
   ]],
   ["Campo", [
-    ["V0", "Amplitud V₀ (pico)", "V", 5],
-    ["r_c", "Radio de corte r<sub>c</sub>", "m", "1e-6"],
+    ["V0", "Amplitud V₀ (pico)", "V", 1],
+    ["r_c", "Radio de corte r<sub>c</sub>", "m", "1e-7"],
   ]],
   ["Apantallamiento", [
     ["Lam", "Λ", "", 0.25],
-    ["l_c", "Longitud l<sub>c</sub>", "m", "10e-6"],
+    ["l_c", "Longitud l<sub>c</sub>", "m", "600e-9"],
     ["lam_D", "Longitud de Debye λ<sub>D</sub>", "m", "30e-9"],
   ]],
   ["Experimento", [
@@ -109,12 +108,12 @@ const FIELDS = [
     ["f_max", "f máxima", "Hz", "1e7"],
     ["n_freq", "Nº de frecuencias", "", 30],
     ["t_step", "Tiempo por frecuencia", "s", 2],
-    ["r_ROI", "Radio de la ROI", "m", "2e-6"],
+    ["r_ROI", "Radio de la ROI", "m", "1e-6"],
     ["L_el", "Longitud del hueco/electrodo L", "m", "1e-3"],
   ]],
   ["Numérico", [
     ["R", "Radio del dominio R", "m", "100e-6"],
-    ["N", "Celdas radiales", "", 2000],
+    ["N", "Celdas radiales", "", 8000],
   ]],
 ];
 const DEFAULTS = Object.fromEntries(FIELDS.flatMap(([, fs]) => fs.map(([k, , , v]) => [k, v])));
@@ -194,11 +193,10 @@ function show(r) {
     <span>D = <b>${fmt(r.D)}</b> m²/s</span>
     <span>f de cruce (CM) = <b>${r.f_cross ? fmt(r.f_cross / 1e6) + " MHz" : "no hay"}</b></span>
     <span>N inicial en la ROI = <b>${fmt(r.N_roi0)}</b></span>`;
-  const pos = (a) => a.map((y, i) => ({ x: r.f[i], y: y > 0 ? y : null }));
+  const pos = (a) => a.map((y, i) => ({ x: r.f[i], y }));
   const ds = [
     { label: "Ascendente", data: pos(r.N_asc), borderColor: "#2563eb", backgroundColor: "#2563eb", pointRadius: 3 },
     { label: "Descendente", data: pos(r.N_desc), borderColor: "#dc2626", backgroundColor: "#dc2626", pointRadius: 3, pointStyle: "rectRot" },
-    { label: "Equilibrio (t → ∞)", data: pos(r.N_eq), borderColor: "#6b7280", borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5 },
     { label: "N inicial", data: [{ x: r.f[0], y: r.N_roi0 }, { x: r.f.at(-1), y: r.N_roi0 }], borderColor: "#9ca3af", borderDash: [2, 3], pointRadius: 0, borderWidth: 1 },
   ];
   if (chart) chart.destroy();
@@ -209,7 +207,7 @@ function show(r) {
       interaction: { mode: "nearest", axis: "x", intersect: false },
       scales: {
         x: { type: "logarithmic", title: { display: true, text: "f [Hz]" }, ticks: { callback: decade, autoSkip: false, maxRotation: 0 } },
-        y: { type: "logarithmic", title: { display: true, text: "N en la ROI (final de cada tramo)" }, ticks: { callback: decade, autoSkip: false } },
+        y: { type: "linear", beginAtZero: true, title: { display: true, text: "N en la ROI (final de cada tramo)" } },
       },
       plugins: { tooltip: { callbacks: {
         title: (it) => fmt(it[0].parsed.x) + " Hz",
@@ -217,17 +215,17 @@ function show(r) {
     },
   });
   $("table").innerHTML = `<thead><tr><th>f [Hz]</th><th>Re[K]</th><th>S(Ω)</th><th>U(r<sub>c</sub>)/k<sub>B</sub>T</th>
-      <th>N ascendente</th><th>N descendente</th><th>N equilibrio</th></tr></thead><tbody>` +
+      <th>N ascendente</th><th>N descendente</th></tr></thead><tbody>` +
     r.f.map((f, i) => `<tr><td>${fmt(f, 4)}</td><td class="${r.ReK[i] > 0 ? "pdep" : "ndep"}">${fmt(r.ReK[i])}</td>
-      <td>${fmt(r.S[i], 4)}</td><td>${fmt(r.U_rc_kT[i])}</td><td>${fmt(r.N_asc[i])}</td><td>${fmt(r.N_desc[i])}</td><td>${fmt(r.N_eq[i])}</td></tr>`).join("") +
+      <td>${fmt(r.S[i], 4)}</td><td>${fmt(r.U_rc_kT[i])}</td><td>${fmt(r.N_asc[i])}</td><td>${fmt(r.N_desc[i])}</td></tr>`).join("") +
     "</tbody>";
 }
 $("csv").onclick = () => {
   if (!last) return;
   const r = last, p = readParams() || {};
   const head = "# " + Object.entries(p).map(([k, v]) => `${k}=${v}`).join(" ") + "\n" +
-    "f_Hz,ReK,S,U_rc_kT,N_ROI_ascendente,N_ROI_descendente,N_ROI_equilibrio\n";
-  const rows = r.f.map((f, i) => [f, r.ReK[i], r.S[i], r.U_rc_kT[i], r.N_asc[i], r.N_desc[i], r.N_eq[i]].join(",")).join("\n");
+    "f_Hz,ReK,S,U_rc_kT,N_ROI_ascendente,N_ROI_descendente\n";
+  const rows = r.f.map((f, i) => [f, r.ReK[i], r.S[i], r.U_rc_kT[i], r.N_asc[i], r.N_desc[i]].join(",")).join("\n");
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([head + rows + "\n"], { type: "text/csv" })), download: "barrido_dep_ROI.csv" });
   a.click(); URL.revokeObjectURL(a.href);
 };
