@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barrido DEP: N en la ROI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%232563eb%22/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --fg:#1d2330; --muted:#5d6678; --line:#d9dde5; --bg:#f6f7f9; --card:#fff; --asc:#2563eb; --desc:#dc2626; --eq:#6b7280; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--fg); background:var(--bg); }
+  header { padding:18px 24px 6px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  header p { margin:0; color:var(--muted); max-width:900px; }
+  main { display:grid; grid-template-columns: 360px 1fr; gap:18px; padding:14px 24px 30px; align-items:start; }
+  @media (max-width: 950px) { main { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  fieldset { border:none; padding:0; margin:0 0 12px; }
+  legend { font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:6px; }
+  label { display:grid; grid-template-columns: 1fr 120px; gap:8px; align-items:center; margin:3px 0; }
+  label span small { color:var(--muted); }
+  input { width:100%; padding:4px 6px; border:1px solid var(--line); border-radius:4px; font:inherit; text-align:right; font-variant-numeric: tabular-nums; }
+  input:invalid { border-color:var(--desc); }
+  button { font:inherit; padding:8px 14px; border-radius:6px; border:1px solid var(--asc); background:var(--asc); color:#fff; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--asc); }
+  button:disabled { opacity:.5; cursor:default; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  #status { margin-top:10px; color:var(--muted); min-height:1.4em; }
+  #status.error { color:var(--desc); }
+  progress { width:100%; height:8px; margin-top:6px; }
+  .summary { display:flex; gap:22px; flex-wrap:wrap; margin-bottom:10px; color:var(--muted); }
+  .summary b { color:var(--fg); font-variant-numeric: tabular-nums; }
+  .chart-wrap { position:relative; height:380px; }
+  table { border-collapse:collapse; width:100%; font-variant-numeric: tabular-nums; margin-top:14px; }
+  th, td { padding:4px 8px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+  th { position:sticky; top:0; background:var(--card); font-weight:600; }
+  .tablewrap { max-height:460px; overflow:auto; }
+  .pdep { color:var(--asc); } .ndep { color:var(--desc); }
+  details { margin-top:14px; color:var(--muted); }
+  details p { margin:6px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Barrido en frecuencia de DEP: partículas en la ROI</h1>
+  <p>Fokker-Planck radial con volumen excluido, electrodos coplanares (|E|² = V₀²/π²r²), Clausius-Mossotti y apantallamiento S(Ω).
+     Cada frecuencia se aplica durante t<sub>paso</sub>, una tras otra, en sentido ascendente y descendente. El cálculo se hace en tu navegador.</p>
+</header>
+<main>
+  <form id="form" class="card" novalidate>
+    <div id="fields"></div>
+    <div class="actions">
+      <button type="submit" id="run" disabled>Calcular</button>
+      <button type="button" id="reset" class="secondary">Valores por defecto</button>
+    </div>
+    <div id="status">Cargando…</div>
+    <progress id="prog" value="0" max="1" hidden></progress>
+  </form>
+
+  <section class="card">
+    <div class="summary" id="summary"></div>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="actions" style="margin-top:10px">
+      <button type="button" id="csv" class="secondary" disabled>Descargar CSV</button>
+      <button type="button" id="link" class="secondary">Copiar enlace con estos parámetros</button>
+    </div>
+    <div class="tablewrap"><table id="table"></table></div>
+    <details>
+      <summary>Modelo y supuestos</summary>
+      <p>U(r) = −π ε<sub>m</sub> a³ Re[K(ω)] S(Ω) V₀² / (π² max(r, r<sub>c</sub>)²), con V₀ amplitud de pico (E<sub>rms</sub>² = E₀²/2).
+         K = (ε<sub>p</sub>* − ε<sub>m</sub>*)/(ε<sub>p</sub>* + 2ε<sub>m</sub>*), ε* = ε − iσ/ω.
+         Ω = ωΛε<sub>m</sub>l<sub>c</sub>/(σ<sub>m</sub>λ<sub>D</sub>), S = Ω²/(1+Ω²).</p>
+      <p>∂<sub>t</sub>φ = −(1/r)∂<sub>r</sub>(rJ), J = vφ(1 − φ/φ<sub>max</sub>) − D∂<sub>r</sub>φ, v = −U′/(6πηa), D = k<sub>B</sub>T/(6πηa).
+         Reservorio a φ₀ = n₀·(4/3)πa³ en r = R. Para r &lt; r<sub>c</sub> no hay fuerza (corte de la ley 1/r en el hueco).</p>
+      <p>N en la ROI = L · π ∫₀^{r<sub>ROI</sub>} n(r) r dr (semiplano del fluido), evaluado al final de cada tramo.
+         «Equilibrio» es el valor estacionario (t → ∞) a esa frecuencia, independiente de la historia.</p>
+    </details>
+  </section>
+</main>
+
+<script>
+// [clave, etiqueta, unidad, valor por defecto]
+const FIELDS = [
+  ["Medio", [
+    ["T", "Temperatura", "K", 298.15],
+    ["eta", "Viscosidad η", "Pa·s", "8.9e-4"],
+    ["eps_m_r", "Permitividad relativa ε<sub>m</sub>/ε₀", "", 78.5],
+    ["sig_m", "Conductividad σ<sub>m</sub>", "S/m", "2e-3"],
+  ]],
+  ["Partícula", [
+    ["a", "Radio a", "m", "50e-9"],
+    ["eps_p_r", "Permitividad relativa ε<sub>p</sub>/ε₀", "", 2.55],
+    ["sig_p", "Conductividad σ<sub>p</sub>", "S/m", 0.04],
+    ["n0_mL", "Concentración n₀", "mL⁻¹", "1e11"],
+    ["phi_max", "Empaquetamiento φ<sub>max</sub>", "", 0.64],
+  ]],
+  ["Campo", [
+    ["V0", "Amplitud V₀ (pico)", "V", 5],
+    ["r_c", "Radio de corte r<sub>c</sub>", "m", "1e-6"],
+  ]],
+  ["Apantallamiento", [
+    ["Lam", "Λ", "", 0.25],
+    ["l_c", "Longitud l<sub>c</sub>", "m", "10e-6"],
+    ["lam_D", "Longitud de Debye λ<sub>D</sub>", "m", "30e-9"],
+  ]],
+  ["Experimento", [
+    ["f_min", "f mínima", "Hz", "1e5"],
+    ["f_max", "f máxima", "Hz", "1e7"],
+    ["n_freq", "Nº de frecuencias", "", 30],
+    ["t_step", "Tiempo por frecuencia", "s", 2],
+    ["r_ROI", "Radio de la ROI", "m", "2e-6"],
+    ["L_el", "Longitud del hueco/electrodo L", "m", "1e-3"],
+  ]],
+  ["Numérico", [
+    ["R", "Radio del dominio R", "m", "100e-6"],
+    ["N", "Celdas radiales", "", 2000],
+  ]],
+];
+const DEFAULTS = Object.fromEntries(FIELDS.flatMap(([, fs]) => fs.map(([k, , , v]) => [k, v])));
+const POSITIVE_INT = new Set(["n_freq", "N"]);
+
+const $ = (id) => document.getElementById(id);
+const fmt = (x, d = 3) => x == null || !isFinite(x) ? "–" : (Math.abs(x) >= 1e4 || (Math.abs(x) < 1e-2 && x !== 0)) ? x.toExponential(d - 1) : x.toPrecision(d);
+
+// ---------- formulario
+function buildForm() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  $("fields").innerHTML = FIELDS.map(([title, fs]) => `
+    <fieldset><legend>${title}</legend>
+      ${fs.map(([k, lbl, unit]) => `
+        <label><span>${lbl}${unit ? ` <small>[${unit}]</small>` : ""}</span>
+          <input id="p_${k}" name="${k}" inputmode="decimal" required></label>`).join("")}
+    </fieldset>`).join("");
+  for (const k in DEFAULTS) $("p_" + k).value = params.has(k) ? params.get(k) : DEFAULTS[k];
+}
+function readParams() {
+  const p = {}, bad = [];
+  for (const k in DEFAULTS) {
+    const el = $("p_" + k), v = Number(el.value.trim().replace(",", "."));
+    const ok = el.value.trim() !== "" && isFinite(v) && v > 0 && (!POSITIVE_INT.has(k) || Number.isInteger(v));
+    el.setCustomValidity(ok ? "" : "inválido");
+    ok ? (p[k] = v) : bad.push(k);
+  }
+  if (!bad.length && p.f_min >= p.f_max) { bad.push("f_min"); $("p_f_min").setCustomValidity("f_min ≥ f_max"); }
+  if (!bad.length && p.r_ROI > p.R) { bad.push("r_ROI"); $("p_r_ROI").setCustomValidity("r_ROI > R"); }
+  return bad.length ? null : p;
+}
+const setStatus = (t, err = false) => { $("status").textContent = t; $("status").className = err ? "error" : ""; };
+
+// ---------- worker
+const worker = new Worker("worker.js");
+let last = null;
+worker.onmessage = ({ data: m }) => {
+  if (m.type === "status") setStatus(m.text);
+  else if (m.type === "ready") { setStatus("Listo."); $("run").disabled = false; }
+  else if (m.type === "progress") {
+    const total = 2 * m.n, done = (m.label === "descendente" ? m.n : 0) + m.k;
+    $("prog").hidden = false; $("prog").value = done / total;
+    setStatus(`Barrido ${m.label}: frecuencia ${m.k}/${m.n}`);
+  } else if (m.type === "result") {
+    last = m.result; show(m.result);
+    setStatus(`Calculado en ${m.seconds.toFixed(1)} s.`); $("prog").hidden = true; $("run").disabled = false; $("csv").disabled = false;
+  } else if (m.type === "error") {
+    setStatus("Error: " + m.text, true); $("prog").hidden = true; $("run").disabled = false;
+  }
+};
+$("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const p = readParams();
+  if (!p) { setStatus("Revisa los campos marcados en rojo (deben ser números > 0).", true); return; }
+  history.replaceState(null, "", "#" + new URLSearchParams(p).toString());
+  $("run").disabled = true; $("prog").value = 0; $("prog").hidden = false;
+  setStatus("Calculando…");
+  worker.postMessage({ params: p });
+});
+$("reset").onclick = () => { history.replaceState(null, "", location.pathname); buildForm(); };
+$("link").onclick = async () => {
+  const p = readParams(); if (!p) return;
+  const url = location.origin + location.pathname + "#" + new URLSearchParams(p).toString();
+  try { await navigator.clipboard.writeText(url); setStatus("Enlace copiado."); } catch { prompt("Enlace:", url); }
+};
+
+// ---------- resultados
+let chart = null;
+const SUP = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+function decade(v) {                  // etiqueta sólo potencias de 10: 10³, 10⁻²…
+  const e = Math.log10(v);
+  return Math.abs(e - Math.round(e)) < 1e-9 ? "10" + String(Math.round(e)).replace(/./g, (c) => SUP[c]) : "";
+}
+function show(r) {
+  $("summary").innerHTML = `
+    <span>φ₀ = <b>${fmt(r.phi0)}</b></span>
+    <span>D = <b>${fmt(r.D)}</b> m²/s</span>
+    <span>f de cruce (CM) = <b>${r.f_cross ? fmt(r.f_cross / 1e6) + " MHz" : "no hay"}</b></span>
+    <span>N inicial en la ROI = <b>${fmt(r.N_roi0)}</b></span>`;
+  const pos = (a) => a.map((y, i) => ({ x: r.f[i], y: y > 0 ? y : null }));
+  const ds = [
+    { label: "Ascendente", data: pos(r.N_asc), borderColor: "#2563eb", backgroundColor: "#2563eb", pointRadius: 3 },
+    { label: "Descendente", data: pos(r.N_desc), borderColor: "#dc2626", backgroundColor: "#dc2626", pointRadius: 3, pointStyle: "rectRot" },
+    { label: "Equilibrio (t → ∞)", data: pos(r.N_eq), borderColor: "#6b7280", borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5 },
+    { label: "N inicial", data: [{ x: r.f[0], y: r.N_roi0 }, { x: r.f.at(-1), y: r.N_roi0 }], borderColor: "#9ca3af", borderDash: [2, 3], pointRadius: 0, borderWidth: 1 },
+  ];
+  if (chart) chart.destroy();
+  chart = new Chart($("chart"), {
+    type: "line", data: { datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, spanGaps: false,
+      interaction: { mode: "nearest", axis: "x", intersect: false },
+      scales: {
+        x: { type: "logarithmic", title: { display: true, text: "f [Hz]" }, ticks: { callback: decade, autoSkip: false, maxRotation: 0 } },
+        y: { type: "logarithmic", title: { display: true, text: "N en la ROI (final de cada tramo)" }, ticks: { callback: decade, autoSkip: false } },
+      },
+      plugins: { tooltip: { callbacks: {
+        title: (it) => fmt(it[0].parsed.x) + " Hz",
+        label: (it) => `${it.dataset.label}: ${fmt(it.parsed.y)}` } } },
+    },
+  });
+  $("table").innerHTML = `<thead><tr><th>f [Hz]</th><th>Re[K]</th><th>S(Ω)</th><th>U(r<sub>c</sub>)/k<sub>B</sub>T</th>
+      <th>N ascendente</th><th>N descendente</th><th>N equilibrio</th></tr></thead><tbody>` +
+    r.f.map((f, i) => `<tr><td>${fmt(f, 4)}</td><td class="${r.ReK[i] > 0 ? "pdep" : "ndep"}">${fmt(r.ReK[i])}</td>
+      <td>${fmt(r.S[i], 4)}</td><td>${fmt(r.U_rc_kT[i])}</td><td>${fmt(r.N_asc[i])}</td><td>${fmt(r.N_desc[i])}</td><td>${fmt(r.N_eq[i])}</td></tr>`).join("") +
+    "</tbody>";
+}
+$("csv").onclick = () => {
+  if (!last) return;
+  const r = last, p = readParams() || {};
+  const head = "# " + Object.entries(p).map(([k, v]) => `${k}=${v}`).join(" ") + "\n" +
+    "f_Hz,ReK,S,U_rc_kT,N_ROI_ascendente,N_ROI_descendente,N_ROI_equilibrio\n";
+  const rows = r.f.map((f, i) => [f, r.ReK[i], r.S[i], r.U_rc_kT[i], r.N_asc[i], r.N_desc[i], r.N_eq[i]].join(",")).join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([head + rows + "\n"], { type: "text/csv" })), download: "barrido_dep_ROI.csv" });
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+buildForm();
+</script>
+</body>
+</html>

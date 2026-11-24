@@ -1,0 +1,5 @@
+__pycache__/
+.ipynb_checkpoints/
+# resultados generados por barrido_frecuencias_dep.ipynb
+barrido_dep.csv
+barrido_dep.npz
